@@ -11,11 +11,10 @@ type TIndex = usize;
 
 type TNumber = i16;
 
-#[derive(Clone, Copy)]
 pub struct Point(TNumber, TNumber);
 
 impl Point {
-    fn get(self, i: i8) -> TNumber {
+    fn get(&self, i: i8) -> TNumber {
         match i {
             0 => self.0,
             _ => self.1,
@@ -41,10 +40,7 @@ impl KDBush {
         node_size: usize,
     ) -> Result<KDBush, std::io::Error> {
         let mut new_kdb = KDBush {
-            points: points
-                .iter()
-                .map(|p| Point(p.0, p.1))
-                .collect(),
+            points: points.iter().map(|p| Point(p.0, p.1)).collect(),
             node_size: node_size,
             ids: points.iter().enumerate().map(|(i, _)| i).collect(),
         };
@@ -80,8 +76,9 @@ impl KDBush {
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let x = self.points[i].get(0);
-                let y = self.points[i].get(1);
+                let p = &self.points[i];
+                let x = p.get(0);
+                let y = p.get(1);
                 if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
                     r.push(self.ids[i]);
                 }
@@ -147,9 +144,8 @@ impl KDBush {
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let x = self.points[i].get(0);
-                let y = self.points[i].get(1);
-                if KDBush::sq_dist(x, y, qx, qy) <= r2 {
+                let p = &self.points[i];
+                if KDBush::sq_dist(p.get(0), p.get(1), qx, qy) <= r2 {
                     r.push(self.ids[i]);
                 }
                 r
@@ -158,8 +154,9 @@ impl KDBush {
         }
 
         let m = (left + right) >> 1;
-        let x = self.points[m].get(0);
-        let y = self.points[m].get(1);
+        let p = &self.points[m];
+        let x = p.get(0);
+        let y = p.get(1);
 
         if KDBush::sq_dist(x, y, qx, qy) <= r2 {
             result.push(self.ids[m]);
