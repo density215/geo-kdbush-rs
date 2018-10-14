@@ -12,7 +12,5 @@ Cargo.lock
 /target
 /Cargo.lock
 /.vscode
-/libpnet
-/libc
-/socket2-rs
 .DS_Store
+/kdbush*
