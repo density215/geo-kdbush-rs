@@ -42,8 +42,7 @@ impl KDBush {
     ) -> Result<KDBush, std::io::Error> {
         let mut new_kdb = KDBush {
             points: points
-                .to_owned()
-                .into_iter()
+                .iter()
                 .map(|p| Point(p.0, p.1))
                 .collect(),
             node_size: node_size,
