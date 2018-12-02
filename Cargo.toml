@@ -4,5 +4,9 @@ version = "0.1.0"
 authors = ["Jasper den Hertog <jasper@plainspace.com>"]
 edition = "2018"
 
+[lib]
+name = "kdbush"
+path = "./src/lib.rs"
+
 [dependencies]
 conv = "0.3.3"

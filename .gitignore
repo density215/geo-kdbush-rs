@@ -14,3 +14,5 @@ Cargo.lock
 /.vscode
 .DS_Store
 /kdbush*
+/geokdbush
+/all-the-cities
