@@ -11,13 +11,17 @@ struct Node {
     left: usize,
     right: usize,
     axis: u8,
-    dist: f64,
+    // dist: f64,
     min_lng: f64,
     min_lat: f64,
     max_lng: f64,
     max_lat: f64,
 }
 
+// TODO:
+// We need to preserve
+// this struct by making
+// refs to it from the Point struct
 #[derive(PartialEq)]
 struct City {
     name: String,
@@ -34,19 +38,23 @@ struct City {
 }
 
 // type Dist = f64;
+enum PointOrNode<'a, Point, Node> {
+    Point(&'a Point),
+    Node(Node),
+}
 
-struct PointDist<'a>(&'a Point, f64);
+struct PointDist<T>(T, f64);
 
-impl<'a> PartialEq for PointDist<'a> {
-    fn eq(&self, other: &PointDist) -> bool {
+impl<T> PartialEq for PointDist<T> {
+    fn eq(&self, other: &PointDist<T>) -> bool {
         self.1 == other.1
     }
 }
 
-impl<'a> Eq for PointDist<'a> {}
+impl<T> Eq for PointDist<T> {}
 
-impl<'a> Ord for PointDist<'a> {
-    fn cmp(&self, other: &PointDist) -> Ordering {
+impl<T> Ord for PointDist<T> {
+    fn cmp(&self, other: &PointDist<T>) -> Ordering {
         if other.1 >= self.1 {
             Ordering::Less
         } else {
@@ -55,8 +63,8 @@ impl<'a> Ord for PointDist<'a> {
     }
 }
 
-impl<'a> PartialOrd for PointDist<'a> {
-    fn partial_cmp(&self, other: &PointDist) -> Option<Ordering> {
+impl<T> PartialOrd for PointDist<T> {
+    fn partial_cmp(&self, other: &PointDist<T>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -68,7 +76,7 @@ impl Node {
             left: 0,         // left index in the kd-tree array
             right: len - 1,  // right index
             axis: 0,         // 0 for longitude axis and 1 for latitude axis
-            dist: 0.0,       // will hold the lower bound of children's distances to the query point
+            // dist: 0.0,       // will hold the lower bound of children's distances to the query point
             min_lng: -180.0, // bounding box of the node
             min_lat: -90.0,
             max_lng: 180.0,
@@ -95,7 +103,7 @@ fn around(
         left: 0,                    // left index in the kd-tree array
         right: index.ids.len() - 1, // right index
         axis: 0,                    // 0 for longitude axis and 1 for latitude axis
-        dist: 0.0, // will hold the lower bound of children's distances to the query point
+        // dist: 0.0, // will hold the lower bound of children's distances to the query point
         min_lng: -180.0, // bounding box of the node
         min_lat: -90.0,
         max_lng: 180.0,
@@ -124,7 +132,7 @@ fn around(
                 };
                 if predicate_check {
                     q.push(PointDist(
-                        item,
+                        PointOrNode::Point(item),
                         great_circle_dist(
                             lng,
                             lat,
@@ -140,11 +148,75 @@ fn around(
             let m = (left + right) >> 1;
             let mid_lng = index.points[m].0;
             let mid_lat = index.points[m].1;
+            let item = &index.points[index.ids[m]];
+            let predicate_check = match predicate {
+                None => true,
+                Some(predicate) => predicate(&item),
+            };
+            if predicate_check {
+                q.push(PointDist(
+                    PointOrNode::Point(item),
+                    great_circle_dist(lng, lat, mid_lng.into(), mid_lat.into(), cos_lat, sin_lat),
+                ))
+            }
+
+            match &node {
+                Some(node) => {
+                    let next_axis = (node.axis + 1) % 2;
+
+                    let left_node = Node {
+                        left: left,
+                        right: m - 1,
+                        axis: next_axis,
+                        min_lng: node.min_lng,
+                        min_lat: node.min_lat,
+                        max_lng: if node.axis == 0 {
+                            mid_lng.into()
+                        } else {
+                            node.max_lng.into()
+                        },
+                        max_lat: if node.axis == 0 {
+                            mid_lat.into()
+                        } else {
+                            node.max_lat.into()
+                        },
+                        // dist: 0.0,
+                    };
+
+                    let right_node = Node {
+                        left: m + 1,
+                        right: right,
+                        axis: next_axis,
+                        min_lng: if node.axis == 0 {
+                            mid_lng.into()
+                        } else {
+                            node.min_lng.into()
+                        },
+                        min_lat: if node.axis == 1 {
+                            mid_lat.into()
+                        } else {
+                            node.min_lat.into()
+                        },
+                        max_lng: node.max_lng.into(),
+                        max_lat: node.max_lat.into(),
+                        // dist: 0.0,
+                    };
+
+                    let left_node_dist = box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
+                    let right_node_dist =
+                        box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
+                    q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
+                    q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
+                }
+                _ => {
+                    break;
+                } // can't happen
+            };
         }
     }
 }
 
-fn box_dist(lng: f64, lat: f64, node: Node, cos_lat: f64, sin_lat: f64) -> f64 {
+fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) -> f64 {
     if lng >= node.min_lng && lng <= node.max_lng {
         match lat {
             lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
