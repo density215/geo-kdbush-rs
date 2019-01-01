@@ -1,15 +1,26 @@
+extern crate serde;
+extern crate serde_derive;
+extern crate serde_json;
+
 use conv::prelude::*;
 use std::fmt;
 
-pub struct KDBush {
-    pub points: Vec<Point>,
+use serde_derive::Deserialize;
+
+pub struct KDBush<T> {
+    pub points: Vec<T>,
+    pub index: Box<FnMut(&T) -> Point>,
+    pub coords: Vec<Point>,
     pub node_size: usize,
     pub ids: Vec<usize>,
 }
 
 type TIndex = usize;
 
-type TNumber = i16;
+type TNumber = GNumber<f64>;
+type RawCoord = (TNumber, TNumber);
+
+type GNumber<T> = T;
 
 pub struct Point(pub TNumber, pub TNumber);
 
@@ -22,29 +33,88 @@ impl Point {
     }
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct City {
+    pub name: String,
+    country: String,
+    altCountry: String,
+    muni: String,
+    muniSub: String,
+    featureClass: String,
+    featureCode: String,
+    adminCode: String,
+    pub population: u32,
+    pub lat: f64,
+    pub lon: f64,
+}
+
 impl fmt::Debug for Point {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "({},{})", self.0, self.1)
     }
 }
 
-impl fmt::Debug for KDBush {
+impl<T> fmt::Debug for KDBush<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        self.points[..].fmt(formatter)
+        self.coords[..].fmt(formatter)
     }
 }
 
-impl KDBush {
+pub trait CoordsGetter<T> {
+    fn get_coords(&self) -> Box<FnMut(&T) -> Point>;
+    
+    // fn get_coords(&self, p: &T) -> Point;
+
+// impl<'a> CoordsGetter<Point> for KDBush<'a, (TNumber, TNumber)> {
+//     fn get_coords(p: &Point) -> Point {
+//         Point(p.0, p.1)
+//     }
+}
+
+impl<T> CoordsGetter<RawCoord> for KDBush<T> {
+    fn get_coords(&self) -> Box<FnMut(&RawCoord) -> Point> {
+        Box::new(|p: &RawCoord| Point(p.0, p.1))
+    }
+    // fn get_coords(&self, p: &RawCoord) -> Point {
+    //     Point(p.0, p.1)
+    // }
+}
+
+impl<T> CoordsGetter<City> for KDBush<T>
+// where
+//     &'static KDBush<City>: CoordsGetter<T>,
+{
+    fn get_coords(&self) -> Box<FnMut(&City) -> Point> {
+        Box::new(|c: &City| Point(c.lon, c.lat))
+    }
+    // fn get_coords(&self, c: &City) -> Point {
+    //     Point(c.lon, c.lat)
+    // }
+}
+
+impl<T> KDBush<T>
+// where
+//     KDBush<T>: CoordsGetter<T>,
+{
     pub fn new(
-        points: Vec<(TNumber, TNumber)>,
+        points: Vec<T>,
+        mut index: Box<FnMut(&T) -> Point>,
         node_size: usize,
-    ) -> Result<KDBush, std::io::Error> {
+    ) -> Result<KDBush<T>, std::io::Error> {
+        let ids: Vec<usize> = points.iter().enumerate().map(|(i, _)| i).collect();
+        let coords = points
+            .iter()
+            .map(|p| -> Point { index(p) })
+            .collect();
         let mut new_kdb = KDBush {
-            points: points.iter().map(|p| Point(p.0, p.1)).collect(),
+            points: points,
+            index: index,
+            coords: coords,
             node_size: node_size,
-            ids: points.iter().enumerate().map(|(i, _)| i).collect(),
+            ids: ids,
         };
         let l = new_kdb.ids.len();
+        // new_kdb.fill_cords();
 
         match l {
             l if l >= 1 => {
@@ -54,6 +124,17 @@ impl KDBush {
             _ => Ok(new_kdb),
         }
     }
+
+    // fn fill_cords(&mut self) {
+    //     // let mut coords_get: Box<FnMut(&T) -> Point> = Self::get_coords(&self);
+    //     let mut coords_get = &self.index;
+
+    //     self.coords = self
+    //         .points
+    //         .iter()
+    //         .map(|p| -> Point { coords_get(p) })
+    //         .collect();
+    // }
 
     pub fn range(
         &self,
@@ -66,7 +147,7 @@ impl KDBush {
         right: Option<TIndex>,
         axis: Option<i8>,
     ) {
-        if self.points.is_empty() {
+        if self.coords.is_empty() {
             return;
         }
 
@@ -76,7 +157,8 @@ impl KDBush {
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let p = &self.points[i];
+                let p = &self.coords[i];
+                // let (x,y) = p.get_coords();
                 let x = p.get(0);
                 let y = p.get(1);
                 if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
@@ -88,8 +170,8 @@ impl KDBush {
         }
 
         let m: TIndex = (left + right) >> 1;
-        let x = self.points[m].get(0);
-        let y = self.points[m].get(1);
+        let x = self.coords[m].get(0);
+        let y = self.coords[m].get(1);
 
         if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
             result.push(self.ids[m]);
@@ -132,7 +214,7 @@ impl KDBush {
         right: Option<TIndex>,
         axis: Option<u8>,
     ) {
-        if self.points.is_empty() {
+        if self.coords.is_empty() {
             return;
         }
 
@@ -144,8 +226,8 @@ impl KDBush {
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let p = &self.points[i];
-                if KDBush::sq_dist(p.get(0), p.get(1), qx, qy) <= r2 {
+                let p = &self.coords[i];
+                if KDBush::<T>::sq_dist(p.get(0), p.get(1), qx, qy) <= r2 {
                     r.push(self.ids[i]);
                 }
                 r
@@ -154,11 +236,11 @@ impl KDBush {
         }
 
         let m = (left + right) >> 1;
-        let p = &self.points[m];
+        let p = &self.coords[m];
         let x = p.get(0);
         let y = p.get(1);
 
-        if KDBush::sq_dist(x, y, qx, qy) <= r2 {
+        if KDBush::<T>::sq_dist(x, y, qx, qy) <= r2 {
             result.push(self.ids[m]);
         }
 
@@ -219,12 +301,12 @@ impl KDBush {
                 );
             };
 
-            let t = self.points[k].get(coord_i);
+            let t = self.coords[k].get(coord_i);
             let mut i = left;
             let mut j = right;
 
             self.swap_item(left, k);
-            if self.points[right].get(coord_i) > t {
+            if self.coords[right].get(coord_i) > t {
                 self.swap_item(left, right);
             }
 
@@ -233,15 +315,15 @@ impl KDBush {
                 i += 1;
                 j -= 1;
 
-                while self.points[i].get(coord_i) < t {
+                while self.coords[i].get(coord_i) < t {
                     i += 1;
                 }
-                while self.points[j].get(coord_i) > t {
+                while self.coords[j].get(coord_i) > t {
                     j -= 1;
                 }
             }
 
-            if self.points[left].get(coord_i) == t {
+            if self.coords[left].get(coord_i) == t {
                 self.swap_item(left, j);
             } else {
                 j += 1;
@@ -259,7 +341,7 @@ impl KDBush {
 
     fn swap_item(&mut self, i: usize, j: usize) {
         self.ids.swap(i, j);
-        self.points.swap(i, j);
+        self.coords.swap(i, j);
     }
 
     fn sq_dist(ax: TNumber, ay: TNumber, bx: TNumber, by: TNumber) -> TNumber {

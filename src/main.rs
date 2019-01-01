@@ -2,7 +2,10 @@
 
 // use geokdbush;
 // use kdbush::{KDBush, Point};
-use kdbush::kdbush::{KDBush};
+use kdbush::geokdbush::{around, distance};
+use kdbush::kdbush::{KDBush, Point};
+
+type TNumber = i16;
 
 fn main() {
     // let ba = geokdbush::EARTH_RADIUS;
@@ -109,7 +112,11 @@ fn main() {
         (46, 78),
     ];
 
-    let kdb = KDBush::new(points, 10);
+    let kdb = KDBush::new(
+        points,
+        Box::new(|p: &(TNumber, TNumber)| Point(p.0 as f64, p.1 as f64)),
+        10,
+    );
 
     let mut range_idx = vec![];
 
@@ -119,13 +126,16 @@ fn main() {
 
     // &sorted_kdb.range(20, 30, 50, 70, &mut range_idx, None, None, None);
 
-    &sorted_kdb.within(50, 50, 20, &mut range_idx, None, None, None);
+    &sorted_kdb.within(50.0, 50.0, 20.0, &mut range_idx, None, None, None);
 
     println!("{:?}", range_idx);
 }
 
 #[cfg(test)]
 mod tests {
+    type TNumber = i16;
+    use kdbush::kdbush::{KDBush, Point};
+
     fn get_points() -> Vec<(i16, i16)> {
         vec![
             (54, 1),
@@ -243,7 +253,11 @@ mod tests {
             26, 87, 4, 63, 50, 7, 28, 82, 70, 29, 34, 91,
         ];
 
-        let sorted_kdb = kdbush::kdbush::KDBush::new(points, 10);
+        let sorted_kdb = kdbush::kdbush::KDBush::new(
+            points,
+            Box::new(|p: &(TNumber, TNumber)| Point(p.0 as f64, p.1 as f64)),
+            10,
+        );
 
         assert_eq!(sorted_kdb.unwrap().ids, ids);
     }
@@ -255,9 +269,14 @@ mod tests {
             3, 90, 77, 72, 62, 96, 47, 8, 17, 15, 69, 71, 44, 19, 18, 45, 60, 20,
         ];
 
-        let sorted_kdb = kdbush::kdbush::KDBush::new(points, 10).unwrap();
+        let sorted_kdb = kdbush::kdbush::KDBush::new(
+            points,
+            Box::new(|p: &(TNumber, TNumber)| Point(p.0 as f64, p.1 as f64)),
+            10,
+        )
+        .unwrap();
         let mut range_ids = vec![];
-        &sorted_kdb.range(20, 30, 50, 70, &mut range_ids, None, None, None);
+        &sorted_kdb.range(20.0, 30.0, 50.0, 70.0, &mut range_ids, None, None, None);
         println!("{:?}", range_ids);
         println!("{:?}", expected_ids);
         assert_eq!(range_ids, expected_ids);
@@ -267,9 +286,14 @@ mod tests {
     fn test_radius() {
         let points = get_points();
         let expected_ids = [3, 96, 71, 44, 18, 45, 60, 6, 25, 92, 42, 20];
-        let sorted_kdb = kdbush::kdbush::KDBush::new(points, 10).unwrap();
+        let sorted_kdb = kdbush::kdbush::KDBush::new(
+            points,
+            Box::new(|p: &(TNumber, TNumber)| Point(p.0 as f64, p.1 as f64)),
+            10,
+        )
+        .unwrap();
         let mut within_ids = vec![];
-        &sorted_kdb.within(50, 50, 20, &mut within_ids, None, None, None);
+        &sorted_kdb.within(50.0, 50.0, 20.0, &mut within_ids, None, None, None);
         assert_eq!(within_ids, expected_ids);
     }
 
@@ -277,13 +301,18 @@ mod tests {
     fn test_empty() {
         let points: Vec<(i16, i16)> = vec![];
         let mut range_ids = vec![];
-        let sorted_kdb = kdbush::kdbush::KDBush::new(points, 10).unwrap();
-        &sorted_kdb.range(20, 30, 50, 70, &mut range_ids, None, None, None);
+        let sorted_kdb = kdbush::kdbush::KDBush::new(
+            points,
+            Box::new(|p: &(TNumber, TNumber)| Point(p.0 as f64, p.1 as f64)),
+            10,
+        )
+        .unwrap();
+        &sorted_kdb.range(20.0, 30.0, 50.0, 70.0, &mut range_ids, None, None, None);
         println!("{:?}", sorted_kdb);
         assert_eq!(range_ids.is_empty(), true);
 
         let mut within_ids = vec![];
-        &sorted_kdb.within(50, 50, 20, &mut within_ids, None, None, None);
+        &sorted_kdb.within(50.0, 50.0, 20.0, &mut within_ids, None, None, None);
         assert_eq!(within_ids.is_empty(), true);
     }
 }

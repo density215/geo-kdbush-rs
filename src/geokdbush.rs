@@ -1,7 +1,12 @@
-use std::cmp::Ordering;
+extern crate serde;
+extern crate serde_derive;
+extern crate serde_json;
 
-use crate::kdbush::{KDBush, Point};
+use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::fmt;
+
+use crate::kdbush::{City, KDBush, Point};
 
 pub const EARTH_RADIUS: f64 = 6137.0;
 pub const EARTH_CIRCUMFERENCE: f64 = 40007.0;
@@ -18,29 +23,20 @@ struct Node {
     max_lat: f64,
 }
 
-// TODO:
-// We need to preserve
-// this struct by making
-// refs to it from the Point struct
-#[derive(PartialEq)]
-struct City {
-    name: String,
-    country: String,
-    altCountry: String,
-    muni: String,
-    muniSub: String,
-    featureClass: String,
-    featureCode: String,
-    adminCode: String,
-    population: u32,
-    lat: f64,
-    lon: f64,
-}
-
 // type Dist = f64;
 enum PointOrNode<'a, Point, Node> {
     Point(&'a Point),
     Node(Node),
+}
+
+impl<'a> fmt::Debug for Node {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "({},{},{},{},{},{})",
+            self.left, self.right, self.min_lat, self.min_lng, self.max_lat, self.max_lng
+        )
+    }
 }
 
 struct PointDist<T>(T, f64);
@@ -73,9 +69,9 @@ impl Node {
     pub fn new(len: usize) -> Node {
         // an object that represents the top kd-tree node (the whole Earth)
         let node = Node {
-            left: 0,         // left index in the kd-tree array
-            right: len - 1,  // right index
-            axis: 0,         // 0 for longitude axis and 1 for latitude axis
+            left: 0,        // left index in the kd-tree array
+            right: len - 1, // right index
+            axis: 0,        // 0 for longitude axis and 1 for latitude axis
             // dist: 0.0,       // will hold the lower bound of children's distances to the query point
             min_lng: -180.0, // bounding box of the node
             min_lat: -90.0,
@@ -86,20 +82,21 @@ impl Node {
     }
 }
 
-fn around(
-    index: KDBush,
+pub fn around<'a>(
+    index: &'a KDBush<City>,
     lng: f64,
     lat: f64,
-    max_result: u32,
-    max_distance: u32,
+    max_results: Option<usize>,
+    max_distance: Option<f64>,
     predicate: &Option<Box<Fn(&Point) -> bool>>,
-) {
-    let mut result = vec![Point];
+) -> Vec<&'a Point> {
+    let mut result: Vec<&Point> = vec![];
     let cos_lat = f64::cos(lat * RAD);
     let sin_lat = f64::sin(lat * RAD);
     let mut q = BinaryHeap::new();
 
-    let mut node = Some(Node {
+    // an object that represents the top kd-tree node (the whole Earth)
+    let mut point_or_node = Some(PointOrNode::Node(Node {
         left: 0,                    // left index in the kd-tree array
         right: index.ids.len() - 1, // right index
         axis: 0,                    // 0 for longitude axis and 1 for latitude axis
@@ -108,24 +105,44 @@ fn around(
         min_lat: -90.0,
         max_lng: 180.0,
         max_lat: 90.0,
-    });
+    }));
 
-    while node.is_some() {
+    // max_distance = match max_distance {
+    //     None => Some(i32::INFINITY),
+    //     _ => max_distance
+    // };
+
+    // max_results = match max_results {
+    //     None => Some(i32::INFINITY),
+    //     _ => max_results
+    // };
+
+    'tree: loop {
+        println!("one run");
         let left;
         let right;
-        match &node {
-            Some(node) => {
-                right = node.right;
-                left = node.left;
+        match &point_or_node {
+            Some(point_or_node) => {
+                if let PointOrNode::Node(node) = point_or_node {
+                    right = node.right;
+                    left = node.left
+                } else {
+                    panic!("No node in current enum.");
+                };
             }
             _ => {
-                break;
+                println!("breaky breaky");
+                break 'tree;
             }
         }
 
+        println!("left:{:?},right: {:?}", left, right);
+        println!("node_size: {:?}", index.node_size);
         if right - left <= index.node_size {
+            // leaf node
+            println!("fill heap");
             (left..right).for_each(|i: usize| {
-                let item = &index.points[index.ids[i]];
+                let item = &index.coords[index.ids[i]];
                 let predicate_check = match predicate {
                     None => true,
                     Some(predicate) => predicate(&item),
@@ -145,10 +162,12 @@ fn around(
                 }
             })
         } else {
+            // not a leaf node (has children). branch.
+            println!("branch node");
             let m = (left + right) >> 1;
-            let mid_lng = index.points[m].0;
-            let mid_lat = index.points[m].1;
-            let item = &index.points[index.ids[m]];
+            let mid_lng = index.coords[m].0;
+            let mid_lat = index.coords[m].1;
+            let item = &index.coords[index.ids[m]];
             let predicate_check = match predicate {
                 None => true,
                 Some(predicate) => predicate(&item),
@@ -160,60 +179,106 @@ fn around(
                 ))
             }
 
-            match &node {
-                Some(node) => {
-                    let next_axis = (node.axis + 1) % 2;
+            match &point_or_node {
+                Some(point_or_node) => {
+                    if let PointOrNode::Node(node) = point_or_node {
+                        let next_axis = (node.axis + 1) % 2;
 
-                    let left_node = Node {
-                        left: left,
-                        right: m - 1,
-                        axis: next_axis,
-                        min_lng: node.min_lng,
-                        min_lat: node.min_lat,
-                        max_lng: if node.axis == 0 {
-                            mid_lng.into()
-                        } else {
-                            node.max_lng.into()
-                        },
-                        max_lat: if node.axis == 0 {
-                            mid_lat.into()
-                        } else {
-                            node.max_lat.into()
-                        },
-                        // dist: 0.0,
-                    };
+                        let left_node = Node {
+                            left: left,
+                            right: m - 1,
+                            axis: next_axis,
+                            min_lng: node.min_lng,
+                            min_lat: node.min_lat,
+                            max_lng: if node.axis == 0 {
+                                mid_lng.into()
+                            } else {
+                                node.max_lng.into()
+                            },
+                            max_lat: if node.axis == 0 {
+                                mid_lat.into()
+                            } else {
+                                node.max_lat.into()
+                            },
+                            // dist: 0.0,
+                        };
 
-                    let right_node = Node {
-                        left: m + 1,
-                        right: right,
-                        axis: next_axis,
-                        min_lng: if node.axis == 0 {
-                            mid_lng.into()
-                        } else {
-                            node.min_lng.into()
-                        },
-                        min_lat: if node.axis == 1 {
-                            mid_lat.into()
-                        } else {
-                            node.min_lat.into()
-                        },
-                        max_lng: node.max_lng.into(),
-                        max_lat: node.max_lat.into(),
-                        // dist: 0.0,
-                    };
+                        let right_node = Node {
+                            left: m + 1,
+                            right: right,
+                            axis: next_axis,
+                            min_lng: if node.axis == 0 {
+                                mid_lng.into()
+                            } else {
+                                node.min_lng.into()
+                            },
+                            min_lat: if node.axis == 1 {
+                                mid_lat.into()
+                            } else {
+                                node.min_lat.into()
+                            },
+                            max_lng: node.max_lng.into(),
+                            max_lat: node.max_lat.into(),
+                            // dist: 0.0,
+                        };
 
-                    let left_node_dist = box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
-                    let right_node_dist =
-                        box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
-                    q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
-                    q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
+                        let left_node_dist =
+                            box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
+                        let right_node_dist =
+                            box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
+                        println!("got here");
+                        q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
+                        q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
+                        println!("{:?}", q.len());
+                    }
                 }
                 _ => {
                     break;
                 } // can't happen
             };
         }
+
+        while q.len() > 0 && q.peek().is_some() {
+            if let PointOrNode::Point(_) = q.peek().unwrap().0 {
+                let candidate = q.pop().unwrap();
+                println!("here.");
+                if max_distance.is_some() && candidate.1 > max_distance.unwrap() {
+                    return result;
+                }
+                if let PointOrNode::Point(point) = candidate.0 {
+                    println!("{:?}", point);
+                    result.push(point);
+                } else {
+                    println!("wut?");
+                    if let PointOrNode::Node(node) = candidate.0 {
+                        println!("{:?}", node);
+                    }
+                }
+
+                if max_results.is_some() && result.len() == max_results.unwrap() {
+                    println!("stop results.");
+                    return result;
+                }
+            } else {
+                break;
+            };
+        }
+
+        println!("{:?}", q.len());
+        let node_dp = q.pop();
+
+        // if !node_dp.is_some() {
+        //     println!("breakert");
+        //     break;
+        // }
+
+        point_or_node = match node_dp.unwrap() {
+            PointDist(p, _) => Some(p),
+            _ => None,
+        };
     }
+
+    result
 }
 
 fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) -> f64 {
@@ -251,12 +316,13 @@ fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) ->
 
 fn great_circle_dist(lng: f64, lat: f64, lng2: f64, lat2: f64, cos_lat: f64, sin_lat: f64) -> f64 {
     let cos_lng_delta = f64::cos((lng2 - lng) * RAD);
-    EARTH_RADIUS * f64::acos(great_circle_dist_part(
-        lat2,
-        cos_lat,
-        sin_lat,
-        cos_lng_delta,
-    ))
+    EARTH_RADIUS
+        * f64::acos(great_circle_dist_part(
+            lat2,
+            cos_lat,
+            sin_lat,
+            cos_lng_delta,
+        ))
 }
 
 fn great_circle_dist_part(lat: f64, cos_lat: f64, sin_lat: f64, cos_lng_delta: f64) -> f64 {
@@ -264,7 +330,7 @@ fn great_circle_dist_part(lat: f64, cos_lat: f64, sin_lat: f64, cos_lng_delta: f
     f64::min(d, 1.0)
 }
 
-fn distance(lng: f64, lat: f64, lng2: f64, lat2: f64) -> f64 {
+pub fn distance(lng: f64, lat: f64, lng2: f64, lat2: f64) -> f64 {
     great_circle_dist(
         lng,
         lat,
