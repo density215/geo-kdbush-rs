@@ -62,13 +62,18 @@ impl<T> fmt::Debug for KDBush<T> {
 
 pub trait CoordsGetter<T> {
     fn get_coords(&self) -> Box<FnMut(&T) -> Point>;
-    
+
     // fn get_coords(&self, p: &T) -> Point;
 
-// impl<'a> CoordsGetter<Point> for KDBush<'a, (TNumber, TNumber)> {
-//     fn get_coords(p: &Point) -> Point {
-//         Point(p.0, p.1)
-//     }
+    // impl<'a> CoordsGetter<Point> for KDBush<'a, (TNumber, TNumber)> {
+    //     fn get_coords(p: &Point) -> Point {
+    //         Point(p.0, p.1)
+    //     }
+}
+
+pub trait Coords {
+    fn get_x(&self) -> &TNumber;
+    fn get_y(&self) -> &TNumber;
 }
 
 impl<T> CoordsGetter<RawCoord> for KDBush<T> {
@@ -92,6 +97,25 @@ impl<T> CoordsGetter<City> for KDBush<T>
     // }
 }
 
+impl Coords for City {
+    fn get_x(&self) -> &TNumber {
+        &self.lon
+    }
+    fn get_y(&self) -> &TNumber {
+        &self.lat
+    }
+}
+
+impl Coords for RawCoord {
+    fn get_x(&self) -> &TNumber {
+        &self.0
+    }
+
+    fn get_y(&self) -> &TNumber {
+        &self.1 
+    }
+}
+
 impl<T> KDBush<T>
 // where
 //     KDBush<T>: CoordsGetter<T>,
@@ -102,10 +126,7 @@ impl<T> KDBush<T>
         node_size: usize,
     ) -> Result<KDBush<T>, std::io::Error> {
         let ids: Vec<usize> = points.iter().enumerate().map(|(i, _)| i).collect();
-        let coords = points
-            .iter()
-            .map(|p| -> Point { index(p) })
-            .collect();
+        let coords = points.iter().map(|p| -> Point { index(p) }).collect();
         let mut new_kdb = KDBush {
             points: points,
             index: index,
