@@ -99,7 +99,7 @@ where
     let mut q = BinaryHeap::new();
 
     // an object that represents the top kd-tree node (the whole Earth)
-    let mut point_or_node = Some(PointOrNode::Node(Node {
+    let mut point_or_node = PointOrNode::Node(Node {
         left: 0,                    // left index in the kd-tree array
         right: index.ids.len() - 1, // right index
         axis: 0,                    // 0 for longitude axis and 1 for latitude axis
@@ -108,23 +108,13 @@ where
         min_lat: -90.0,
         max_lng: 180.0,
         max_lat: 90.0,
-    }));
-
-    // max_distance = match max_distance {
-    //     None => Some(i32::INFINITY),
-    //     _ => max_distance
-    // };
-
-    // max_results = match max_results {
-    //     None => Some(i32::INFINITY),
-    //     _ => max_results
-    // };
+    });
 
     'tree: loop {
         let left;
         let right;
         match &point_or_node {
-            Some(point_or_node) => {
+            point_or_node => {
                 if let PointOrNode::Node(node) = point_or_node {
                     right = node.right;
                     left = node.left
@@ -175,8 +165,7 @@ where
                 Some(predicate) => predicate(item),
             };
             if predicate_check {
-                let dist =
-                    great_circle_dist(lng, lat, mid_lng, mid_lat, cos_lat, sin_lat);
+                let dist = great_circle_dist(lng, lat, mid_lng, mid_lat, cos_lat, sin_lat);
                 println!("branch to heap");
                 println!("{:?}", dist);
                 println!("{:?}", item);
@@ -184,7 +173,7 @@ where
             }
 
             match &point_or_node {
-                Some(point_or_node) => {
+                point_or_node => {
                     if let PointOrNode::Node(node) = point_or_node {
                         let next_axis = (node.axis + 1) % 2;
 
@@ -274,14 +263,10 @@ where
         println!("heap length : \t{:?}", q.len());
         let node_dp = q.pop();
 
-        // if !node_dp.is_some() {
-        //     println!("breakert");
-        //     break;
-        // }
-
-        point_or_node = match node_dp.unwrap() {
-            PointDist(p, _) => Some(p),
-            _ => None,
+        match node_dp.unwrap() {
+            PointDist(p, _) => {
+                point_or_node = p;
+            }
         };
     }
 
