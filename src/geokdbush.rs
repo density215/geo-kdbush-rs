@@ -177,62 +177,53 @@ where
                 q.push(PointDist(PointOrNode::Point(item), dist))
             }
 
-            match &point_or_node {
-                point_or_node => {
-                    if let PointOrNode::Node(node) = point_or_node {
-                        let next_axis = (node.axis + 1) % 2;
+            if let PointOrNode::Node(node) = point_or_node {
+                let next_axis = (node.axis + 1) % 2;
 
-                        let left_node = Node {
-                            left: left,
-                            right: m - 1,
-                            axis: next_axis,
-                            min_lng: node.min_lng,
-                            min_lat: node.min_lat,
-                            max_lng: if node.axis == 0 {
-                                mid_lng.into()
-                            } else {
-                                node.max_lng.into()
-                            },
-                            max_lat: if node.axis == 1 {
-                                mid_lat.into()
-                            } else {
-                                node.max_lat.into()
-                            },
-                            // dist: 0.0,
-                        };
+                let left_node = Node {
+                    left: left,
+                    right: m - 1,
+                    axis: next_axis,
+                    min_lng: node.min_lng,
+                    min_lat: node.min_lat,
+                    max_lng: if node.axis == 0 {
+                        mid_lng.into()
+                    } else {
+                        node.max_lng.into()
+                    },
+                    max_lat: if node.axis == 1 {
+                        mid_lat.into()
+                    } else {
+                        node.max_lat.into()
+                    },
+                    // dist: 0.0,
+                };
 
-                        let right_node = Node {
-                            left: m + 1,
-                            right: right,
-                            axis: next_axis,
-                            min_lng: if node.axis == 0 {
-                                mid_lng.into()
-                            } else {
-                                node.min_lng.into()
-                            },
-                            min_lat: if node.axis == 1 {
-                                mid_lat.into()
-                            } else {
-                                node.min_lat.into()
-                            },
-                            max_lng: node.max_lng.into(),
-                            max_lat: node.max_lat.into(),
-                            // dist: 0.0,
-                        };
+                let right_node = Node {
+                    left: m + 1,
+                    right: right,
+                    axis: next_axis,
+                    min_lng: if node.axis == 0 {
+                        mid_lng.into()
+                    } else {
+                        node.min_lng.into()
+                    },
+                    min_lat: if node.axis == 1 {
+                        mid_lat.into()
+                    } else {
+                        node.min_lat.into()
+                    },
+                    max_lng: node.max_lng.into(),
+                    max_lat: node.max_lat.into(),
+                    // dist: 0.0,
+                };
 
-                        let left_node_dist =
-                            box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
-                        let right_node_dist =
-                            box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
-                        q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
-                        q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
-                        println!("{:?}", q.len());
-                    }
-                }
-                _ => {
-                    panic!("this can't happen");
-                } // can't happen
-            };
+                let left_node_dist = box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
+                let right_node_dist = box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
+                q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
+                q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
+                println!("{:?}", q.len());
+            }
         }
 
         while q.len() > 0 && q.peek().is_some() {
@@ -280,19 +271,12 @@ where
 
 fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) -> f64 {
     if lng >= node.min_lng && lng <= node.max_lng {
-        // let lat = match lat {
-        //     lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
-        //     lat if lat >= node.max_lat => EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0,
-        //     _ => 0.0,
-        // };
-        // return lat;
-        if lat <= node.min_lat {
-            return EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0;
-        }
-        if lat >= node.max_lat {
-            return EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0;
-        }
-        return 0.0;
+        let lat = match lat {
+            lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
+            lat if lat >= node.max_lat => EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0,
+            _ => 0.0,
+        };
+        return lat;
     }
 
     let closest_lng =
