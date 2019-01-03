@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::fmt;
 
-use crate::kdbush::{City, CoordsGetter, KDBush, Point};
+use crate::kdbush::{Coords, KDBush};
 
 pub const EARTH_RADIUS: f64 = 6137.0;
 pub const EARTH_CIRCUMFERENCE: f64 = 40007.0;
@@ -91,7 +91,7 @@ pub fn around<'a, T>(
     predicate: &Option<Box<Fn(&T) -> bool>>,
 ) -> Vec<&'a T>
 where
-    T: fmt::Debug,
+    T: fmt::Debug + Coords,
 {
     let mut result = vec![];
     let cos_lat = f64::cos(lat * RAD);
@@ -142,8 +142,10 @@ where
                 let dist = great_circle_dist(
                     lng,
                     lat,
-                    index.coords[i].get(0).into(),
-                    index.coords[i].get(1).into(),
+                    // index.coords[i].get(0).into(),
+                    *item.get_x(),
+                    // index.coords[i].get(1).into(),
+                    *item.get_y(),
                     cos_lat,
                     sin_lat,
                 );
@@ -157,8 +159,11 @@ where
             // not a leaf node (has children). branch.
             println!("branch node");
             let m = (left + right) >> 1;
-            let mid_lng = index.coords[m].get(0);
-            let mid_lat = index.coords[m].get(1);
+            // let mid_lng = index.coords[m].get(0);
+            let mid_lng = *index.points[index.ids[m]].get_x();
+            // let mid_lat = index.coords[m].get(1);
+            let mid_lat = *index.points[index.ids[m]].get_y();
+
             let item = &index.points[index.ids[m]];
             let predicate_check = match predicate {
                 None => true,
