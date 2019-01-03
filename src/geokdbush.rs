@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::fmt;
 
-use crate::kdbush::{City, KDBush, Point};
+use crate::kdbush::{City, CoordsGetter, KDBush, Point};
 
 pub const EARTH_RADIUS: f64 = 6137.0;
 pub const EARTH_CIRCUMFERENCE: f64 = 40007.0;
@@ -24,8 +24,8 @@ struct Node {
 }
 
 // type Dist = f64;
-enum PointOrNode<'a, Point, Node> {
-    Point(&'a Point),
+enum PointOrNode<'a, T, Node> {
+    Point(&'a T),
     Node(Node),
 }
 
@@ -51,10 +51,10 @@ impl<T> Eq for PointDist<T> {}
 
 impl<T> Ord for PointDist<T> {
     fn cmp(&self, other: &PointDist<T>) -> Ordering {
-        if other.1 >= self.1 {
-            Ordering::Less
-        } else {
+        if other.1 > self.1 {
             Ordering::Greater
+        } else {
+            Ordering::Less
         }
     }
 }
@@ -65,32 +65,35 @@ impl<T> PartialOrd for PointDist<T> {
     }
 }
 
-impl Node {
-    pub fn new(len: usize) -> Node {
-        // an object that represents the top kd-tree node (the whole Earth)
-        let node = Node {
-            left: 0,        // left index in the kd-tree array
-            right: len - 1, // right index
-            axis: 0,        // 0 for longitude axis and 1 for latitude axis
-            // dist: 0.0,       // will hold the lower bound of children's distances to the query point
-            min_lng: -180.0, // bounding box of the node
-            min_lat: -90.0,
-            max_lng: 180.0,
-            max_lat: 90.0,
-        };
-        node
-    }
-}
+// impl Node {
+//     pub fn new(len: usize) -> Node {
+//         // an object that represents the top kd-tree node (the whole Earth)
+//         let node = Node {
+//             left: 0,        // left index in the kd-tree array
+//             right: len - 1, // right index
+//             axis: 0,        // 0 for longitude axis and 1 for latitude axis
+//             // dist: 0.0,       // will hold the lower bound of children's distances to the query point
+//             min_lng: -180.0, // bounding box of the node
+//             min_lat: -90.0,
+//             max_lng: 180.0,
+//             max_lat: 90.0,
+//         };
+//         node
+//     }
+// }
 
-pub fn around<'a>(
-    index: &'a KDBush<City>,
+pub fn around<'a, T>(
+    index: &'a KDBush<T>,
     lng: f64,
     lat: f64,
     max_results: Option<usize>,
     max_distance: Option<f64>,
-    predicate: &Option<Box<Fn(&Point) -> bool>>,
-) -> Vec<&'a Point> {
-    let mut result: Vec<&Point> = vec![];
+    predicate: &Option<Box<Fn(&T) -> bool>>,
+) -> Vec<&'a T>
+where
+    T: fmt::Debug,
+{
+    let mut result = vec![];
     let cos_lat = f64::cos(lat * RAD);
     let sin_lat = f64::sin(lat * RAD);
     let mut q = BinaryHeap::new();
@@ -118,7 +121,6 @@ pub fn around<'a>(
     // };
 
     'tree: loop {
-        println!("one run");
         let left;
         let right;
         match &point_or_node {
@@ -138,45 +140,47 @@ pub fn around<'a>(
 
         println!("left:{:?},right: {:?}", left, right);
         println!("node_size: {:?}", index.node_size);
-        if right - left <= index.node_size {
+        if (right - left) <= index.node_size {
             // leaf node
             println!("fill heap");
-            (left..right).for_each(|i: usize| {
-                let item = &index.coords[index.ids[i]];
+            (left..(right + 1)).for_each(|i: usize| {
+                let item = &index.points[index.ids[i]];
                 let predicate_check = match predicate {
                     None => true,
-                    Some(predicate) => predicate(&item),
+                    Some(predicate) => predicate(item),
                 };
+                let dist = great_circle_dist(
+                    lng,
+                    lat,
+                    index.coords[i].get(0).into(),
+                    index.coords[i].get(1).into(),
+                    cos_lat,
+                    sin_lat,
+                );
+                println!("leaf to heap {:?}", item);
+                println!("{:?}", dist);
                 if predicate_check {
-                    q.push(PointDist(
-                        PointOrNode::Point(item),
-                        great_circle_dist(
-                            lng,
-                            lat,
-                            item.get(0).into(),
-                            item.get(1).into(),
-                            cos_lat,
-                            sin_lat,
-                        ),
-                    ));
+                    q.push(PointDist(PointOrNode::Point(item), dist));
                 }
             })
         } else {
             // not a leaf node (has children). branch.
             println!("branch node");
             let m = (left + right) >> 1;
-            let mid_lng = index.coords[m].0;
-            let mid_lat = index.coords[m].1;
-            let item = &index.coords[index.ids[m]];
+            let mid_lng = index.coords[m].get(0);
+            let mid_lat = index.coords[m].get(1);
+            let item = &index.points[index.ids[m]];
             let predicate_check = match predicate {
                 None => true,
-                Some(predicate) => predicate(&item),
+                Some(predicate) => predicate(item),
             };
             if predicate_check {
-                q.push(PointDist(
-                    PointOrNode::Point(item),
-                    great_circle_dist(lng, lat, mid_lng.into(), mid_lat.into(), cos_lat, sin_lat),
-                ))
+                let dist =
+                    great_circle_dist(lng, lat, mid_lng, mid_lat, cos_lat, sin_lat);
+                println!("branch to heap");
+                println!("{:?}", dist);
+                println!("{:?}", item);
+                q.push(PointDist(PointOrNode::Point(item), dist))
             }
 
             match &point_or_node {
@@ -195,7 +199,7 @@ pub fn around<'a>(
                             } else {
                                 node.max_lng.into()
                             },
-                            max_lat: if node.axis == 0 {
+                            max_lat: if node.axis == 1 {
                                 mid_lat.into()
                             } else {
                                 node.max_lat.into()
@@ -226,27 +230,29 @@ pub fn around<'a>(
                             box_dist(lng, lat, Box::new(&left_node), cos_lat, sin_lat);
                         let right_node_dist =
                             box_dist(lng, lat, Box::new(&right_node), cos_lat, sin_lat);
-                        println!("got here");
                         q.push(PointDist(PointOrNode::Node(left_node), left_node_dist));
                         q.push(PointDist(PointOrNode::Node(right_node), right_node_dist));
                         println!("{:?}", q.len());
                     }
                 }
                 _ => {
-                    break;
+                    panic!("this can't happen");
                 } // can't happen
             };
         }
 
         while q.len() > 0 && q.peek().is_some() {
             if let PointOrNode::Point(_) = q.peek().unwrap().0 {
+                // a leaf node was found
                 let candidate = q.pop().unwrap();
-                println!("here.");
                 if max_distance.is_some() && candidate.1 > max_distance.unwrap() {
+                    println!("max distance reached");
                     return result;
                 }
                 if let PointOrNode::Point(point) = candidate.0 {
-                    println!("{:?}", point);
+                    println!("candidate");
+                    println!("point :\t{:?}", point);
+                    println!("dist :\t{:?}", candidate.1);
                     result.push(point);
                 } else {
                     println!("wut?");
@@ -260,11 +266,12 @@ pub fn around<'a>(
                     return result;
                 }
             } else {
+                // no point found, this is a branch node
                 break;
             };
         }
 
-        println!("{:?}", q.len());
+        println!("heap length : \t{:?}", q.len());
         let node_dp = q.pop();
 
         // if !node_dp.is_some() {
@@ -283,11 +290,19 @@ pub fn around<'a>(
 
 fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) -> f64 {
     if lng >= node.min_lng && lng <= node.max_lng {
-        match lat {
-            lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
-            lat if lat >= node.max_lat => EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0,
-            _ => 0.0,
-        };
+        // let lat = match lat {
+        //     lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
+        //     lat if lat >= node.max_lat => EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0,
+        //     _ => 0.0,
+        // };
+        // return lat;
+        if lat <= node.min_lat {
+            return EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0;
+        }
+        if lat >= node.max_lat {
+            return EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0;
+        }
+        return 0.0;
     }
 
     let closest_lng =
