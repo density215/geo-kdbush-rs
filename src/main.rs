@@ -112,7 +112,7 @@ fn main() {
 
     let kdb = KDBush::new(
         points.iter().map(|p| RawCoord(p.0, p.1)).collect(),
-        Box::new(|p: &RawCoord| Point(p.0, p.1)),
+        // Box::new(|p: &RawCoord<i16>| Point(p.0, p.1)),
         10,
     );
 
@@ -133,7 +133,7 @@ fn main() {
 mod tests {
     use kdbush::kdbush::{KDBush, Point, RawCoord};
 
-    fn get_points() -> Vec<RawCoord> {
+    fn get_points() -> Vec<RawCoord<i16>> {
         vec![
             (54, 1),
             (97, 21),
@@ -253,7 +253,7 @@ mod tests {
         ];
 
         let sorted_kdb =
-            kdbush::kdbush::KDBush::new(points, Box::new(|p: &RawCoord| Point(p.0, p.1)), 10);
+            kdbush::kdbush::KDBush::new(points, 10);
 
         assert_eq!(sorted_kdb.unwrap().ids, ids);
     }
@@ -266,7 +266,7 @@ mod tests {
         ];
 
         let sorted_kdb =
-            kdbush::kdbush::KDBush::new(points, Box::new(|p: &RawCoord| Point(p.0, p.1)), 10)
+            kdbush::kdbush::KDBush::new(points, 10)
                 .unwrap();
         let mut range_ids = vec![];
         &sorted_kdb.range(&20, &30, &50, &70, &mut range_ids, None, None, None);
@@ -280,7 +280,7 @@ mod tests {
         let points = get_points();
         let expected_ids = [3, 96, 71, 44, 18, 45, 60, 6, 25, 92, 42, 20];
         let sorted_kdb =
-            kdbush::kdbush::KDBush::new(points, Box::new(|p: &RawCoord| Point(p.0, p.1)), 10)
+            kdbush::kdbush::KDBush::new(points, 10)
                 .unwrap();
         let mut within_ids = vec![];
         &sorted_kdb.within(50, 50, 20, &mut within_ids, None, None, None);
@@ -289,10 +289,10 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let points: Vec<RawCoord> = vec![];
+        let points: Vec<RawCoord<i16>> = vec![];
         let mut range_ids = vec![];
         let sorted_kdb =
-            kdbush::kdbush::KDBush::new(points, Box::new(|p: &RawCoord| Point(p.0, p.1)), 10)
+            kdbush::kdbush::KDBush::new(points, 10)
                 .unwrap();
         &sorted_kdb.range(&20, &30, &50, &70, &mut range_ids, None, None, None);
         println!("{:?}", sorted_kdb);

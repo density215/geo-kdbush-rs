@@ -24,7 +24,7 @@ mod tests {
         println!("{:?}", cities[0]);
         let cities: KDBush<City> = KDBush::new(
             cities,
-            Box::new(|c: &City| Point(c.lon as f64, c.lat as f64)),
+            // Box::new(|c: &City| Point(c.lon as f64, c.lat as f64)),
             64,
         ).unwrap();
         Ok(cities)

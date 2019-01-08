@@ -16,7 +16,7 @@ where
     T::CoordType: Num + PartialOrd,
 {
     pub points: Vec<T>,
-    pub index: Box<FnMut(&T) -> Point<T::CoordType>>,
+    // pub index: Box<FnMut(&T) -> Point<T::CoordType>>,
     // pub coords: Vec<Point<T::CoordType>>,
     pub node_size: usize,
     pub ids: Vec<usize>,
@@ -24,19 +24,19 @@ where
 
 type TIndex = usize;
 
-pub struct RawCoord(pub i16, pub i16);
+pub struct RawCoord<T>(pub T, pub T) where T: Num + PartialOrd;
 
-impl Coords for RawCoord {
-    type CoordType = i16;
-    fn get_x(&self) -> <RawCoord as Coords>::CoordType {
+impl<T> Coords for RawCoord<T> where T: Num + PartialOrd + Copy {
+    type CoordType = T;
+    fn get_x(&self) -> <RawCoord<T> as Coords>::CoordType {
         self.0
     }
 
-    fn get_y(&self) -> <RawCoord as Coords>::CoordType {
+    fn get_y(&self) -> <RawCoord<T> as Coords>::CoordType {
         self.1
     }
 
-    fn get(&self, i: i8) -> <RawCoord as Coords>::CoordType {
+    fn get(&self, i: i8) -> <RawCoord<T> as Coords>::CoordType {
         match i {
             0 => self.0,
             _ => self.1,
@@ -44,7 +44,7 @@ impl Coords for RawCoord {
     }
 }
 
-impl fmt::Debug for RawCoord {
+impl<T> fmt::Debug for RawCoord<T> where T: Num + PartialOrd + fmt::Display {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "({},{})", self.0, self.1)
     }
@@ -129,7 +129,7 @@ where
 {
     pub fn new(
         points: Vec<T>,
-        mut index: Box<FnMut(&T) -> Point<T::CoordType>>,
+        // index: Box<FnMut(&T) -> Point<T::CoordType>>,
         node_size: usize,
     ) -> Result<KDBush<T>, std::io::Error> {
         let ids: Vec<usize> = points.iter().enumerate().map(|(i, _)| i).collect();
@@ -139,7 +139,7 @@ where
         //     .collect();
         let mut new_kdb = KDBush {
             points: points,
-            index: index,
+            // index: index,
             // coords: coords,
             node_size: node_size,
             ids: ids,
