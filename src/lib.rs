@@ -22,8 +22,11 @@ mod tests {
         GzDecoder::new(f).read_to_string(&mut s).unwrap();
         let cities: Vec<City> = serde_json::from_str(s.as_str())?;
         println!("{:?}", cities[0]);
-        let cities: KDBush<City> =
-            KDBush::new(cities, Box::new(|c: &City| Point(c.lon, c.lat)), 64).unwrap();
+        let cities: KDBush<City> = KDBush::new(
+            cities,
+            Box::new(|c: &City| Point(c.lon as f64, c.lat as f64)),
+            64,
+        ).unwrap();
         Ok(cities)
     }
 

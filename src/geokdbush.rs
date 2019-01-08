@@ -1,3 +1,5 @@
+extern crate num;
+extern crate num_traits;
 extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
@@ -7,29 +9,62 @@ use std::collections::BinaryHeap;
 use std::fmt;
 
 use crate::kdbush::{Coords, KDBush};
+use num::{Float, NumCast};
+use num_traits::FloatConst;
 
 pub const EARTH_RADIUS: f64 = 6137.0;
 pub const EARTH_CIRCUMFERENCE: f64 = 40007.0;
 pub const RAD: f64 = std::f64::consts::PI / 180.0;
 
-struct Node {
+fn earth_radius<T: Float + FloatConst>() -> T
+where
+    T: std::ops::Div<Output = T>,
+{
+    NumCast::from(6137.0).unwrap()
+}
+
+fn earth_circumference<T: Float + FloatConst>() -> T
+where
+    T: std::ops::Div<Output = T>,
+{
+    NumCast::from(40007.0).unwrap()
+}
+
+fn rad<T: Float + FloatConst>() -> T
+where
+    T: std::ops::Div<Output = T>,
+{
+    T::PI() / NumCast::from(180.0).unwrap()
+}
+
+struct Node<T>
+where
+    T: Float + FloatConst + PartialOrd,
+{
     left: usize,
     right: usize,
     axis: u8,
     // dist: f64,
-    min_lng: f64,
-    min_lat: f64,
-    max_lng: f64,
-    max_lat: f64,
+    min_lng: T,
+    min_lat: T,
+    max_lng: T,
+    max_lat: T,
 }
 
 // type Dist = f64;
-enum PointOrNode<'a, T, Node> {
+enum PointOrNode<'a, T>
+where
+    T: Coords,
+    T::CoordType: Float + FloatConst + PartialOrd,
+{
     Point(&'a T),
-    Node(Node),
+    Node(Node<<T as Coords>::CoordType>),
 }
 
-impl<'a> fmt::Debug for Node {
+impl<'a, T> fmt::Debug for Node<T>
+where
+    T: fmt::Display + Float + FloatConst + PartialOrd,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -39,18 +74,31 @@ impl<'a> fmt::Debug for Node {
     }
 }
 
-struct PointDist<T>(T, f64);
+struct PointDist<S, T>(S, T)
+where
+    // S: Coords,
+    T: Float + FloatConst + PartialOrd;
 
-impl<T> PartialEq for PointDist<T> {
-    fn eq(&self, other: &PointDist<T>) -> bool {
+impl<S, T> PartialEq for PointDist<S, T>
+where
+    T: Float + FloatConst + PartialOrd,
+    // S: Coords,
+{
+    fn eq(&self, other: &PointDist<S, T>) -> bool {
         self.1 == other.1
     }
 }
 
-impl<T> Eq for PointDist<T> {}
+impl<S, T> Eq for PointDist<S, T> where T: Float + FloatConst + PartialOrd // S: Coords,,
+{
+}
 
-impl<T> Ord for PointDist<T> {
-    fn cmp(&self, other: &PointDist<T>) -> Ordering {
+impl<S, T> Ord for PointDist<S, T>
+where
+    T: Float + FloatConst + PartialOrd,
+    // S: Coords,
+{
+    fn cmp(&self, other: &PointDist<S, T>) -> Ordering {
         if other.1 > self.1 {
             Ordering::Greater
         } else {
@@ -59,8 +107,12 @@ impl<T> Ord for PointDist<T> {
     }
 }
 
-impl<T> PartialOrd for PointDist<T> {
-    fn partial_cmp(&self, other: &PointDist<T>) -> Option<Ordering> {
+impl<S, T> PartialOrd for PointDist<S, T>
+where
+    T: Float + FloatConst + PartialOrd,
+    // S: Coords,
+{
+    fn partial_cmp(&self, other: &PointDist<S, T>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -84,49 +136,42 @@ impl<T> PartialOrd for PointDist<T> {
 
 pub fn around<'a, T>(
     index: &'a KDBush<T>,
-    lng: f64,
-    lat: f64,
+    lng: T::CoordType,
+    lat: T::CoordType,
     max_results: Option<usize>,
-    max_distance: Option<f64>,
+    max_distance: Option<T::CoordType>,
     predicate: &Option<Box<Fn(&T) -> bool>>,
 ) -> Vec<&'a T>
 where
     T: fmt::Debug + Coords,
+    T::CoordType: Float + PartialOrd + FloatConst + fmt::Debug + fmt::Display,
 {
     let mut result = vec![];
-    let cos_lat = f64::cos(lat * RAD);
-    let sin_lat = f64::sin(lat * RAD);
+    let cos_lat = T::CoordType::cos(lat * rad::<T::CoordType>());
+    let sin_lat = T::CoordType::sin(lat * rad::<T::CoordType>());
     let mut q = BinaryHeap::new();
 
     // an object that represents the top kd-tree node (the whole Earth)
-    let mut point_or_node = PointOrNode::Node(Node {
+    let mut point_or_node = PointOrNode::Node(Node::<T::CoordType> {
         left: 0,                    // left index in the kd-tree array
         right: index.ids.len() - 1, // right index
         axis: 0,                    // 0 for longitude axis and 1 for latitude axis
         // dist: 0.0, // will hold the lower bound of children's distances to the query point
-        min_lng: -180.0, // bounding box of the node
-        min_lat: -90.0,
-        max_lng: 180.0,
-        max_lat: 90.0,
+        min_lng: NumCast::from(-180.0).unwrap(), // bounding box of the node
+        min_lat: NumCast::from(-90.0).unwrap(),
+        max_lng: NumCast::from(180.0).unwrap(),
+        max_lat: NumCast::from(90.0).unwrap(),
     });
 
     'tree: loop {
         let left;
         let right;
-        match &point_or_node {
-            point_or_node => {
-                if let PointOrNode::Node(node) = point_or_node {
-                    right = node.right;
-                    left = node.left
-                } else {
-                    panic!("No node in current enum.");
-                };
-            }
-            _ => {
-                println!("breaky breaky");
-                break 'tree;
-            }
-        }
+        if let PointOrNode::Node(node) = &point_or_node {
+            right = node.right;
+            left = node.left
+        } else {
+            panic!("No node in current enum.");
+        };
 
         println!("left:{:?},right: {:?}", left, right);
         println!("node_size: {:?}", index.node_size);
@@ -143,9 +188,9 @@ where
                     lng,
                     lat,
                     // index.coords[i].get(0).into(),
-                    *item.get_x(),
+                    NumCast::from(item.get_x()).unwrap(),
                     // index.coords[i].get(1).into(),
-                    *item.get_y(),
+                    NumCast::from(item.get_y()).unwrap(),
                     cos_lat,
                     sin_lat,
                 );
@@ -160,9 +205,9 @@ where
             println!("branch node");
             let m = (left + right) >> 1;
             // let mid_lng = index.coords[m].get(0);
-            let mid_lng = *index.points[index.ids[m]].get_x();
+            let mid_lng = index.points[index.ids[m]].get_x();
             // let mid_lat = index.coords[m].get(1);
-            let mid_lat = *index.points[index.ids[m]].get_y();
+            let mid_lat = index.points[index.ids[m]].get_y();
 
             let item = &index.points[index.ids[m]];
             let predicate_check = match predicate {
@@ -180,41 +225,41 @@ where
             if let PointOrNode::Node(node) = point_or_node {
                 let next_axis = (node.axis + 1) % 2;
 
-                let left_node = Node {
+                let left_node = Node::<<T as Coords>::CoordType> {
                     left: left,
                     right: m - 1,
                     axis: next_axis,
-                    min_lng: node.min_lng,
-                    min_lat: node.min_lat,
+                    min_lng: NumCast::from(node.min_lng).unwrap(),
+                    min_lat: NumCast::from(node.min_lat).unwrap(),
                     max_lng: if node.axis == 0 {
-                        mid_lng.into()
+                        NumCast::from(mid_lng).unwrap()
                     } else {
-                        node.max_lng.into()
+                        NumCast::from(node.max_lng).unwrap()
                     },
                     max_lat: if node.axis == 1 {
-                        mid_lat.into()
+                        NumCast::from(mid_lat).unwrap()
                     } else {
-                        node.max_lat.into()
+                        NumCast::from(node.max_lat).unwrap()
                     },
                     // dist: 0.0,
                 };
 
-                let right_node = Node {
+                let right_node = Node::<<T as Coords>::CoordType> {
                     left: m + 1,
                     right: right,
                     axis: next_axis,
                     min_lng: if node.axis == 0 {
-                        mid_lng.into()
+                        NumCast::from(mid_lng).unwrap()
                     } else {
-                        node.min_lng.into()
+                        NumCast::from(node.min_lng).unwrap()
                     },
                     min_lat: if node.axis == 1 {
-                        mid_lat.into()
+                        NumCast::from(mid_lat).unwrap()
                     } else {
-                        node.min_lat.into()
+                        NumCast::from(node.min_lat).unwrap()
                     },
-                    max_lng: node.max_lng.into(),
-                    max_lat: node.max_lat.into(),
+                    max_lng: NumCast::from(node.max_lng).unwrap(),
+                    max_lat: NumCast::from(node.max_lat).unwrap(),
                     // dist: 0.0,
                 };
 
@@ -241,9 +286,9 @@ where
                     result.push(point);
                 } else {
                     println!("wut?");
-                    if let PointOrNode::Node(node) = candidate.0 {
-                        println!("{:?}", node);
-                    }
+                    // if let PointOrNode::Node(node) = candidate.0 {
+                    //     println!("{:?}", node);
+                    // }
                 }
 
                 if max_results.is_some() && result.len() == max_results.unwrap() {
@@ -269,63 +314,79 @@ where
     result
 }
 
-fn box_dist(lng: f64, lat: f64, node: Box<&Node>, cos_lat: f64, sin_lat: f64) -> f64 {
+fn box_dist<T>(lng: T, lat: T, node: Box<&Node<T>>, cos_lat: T, sin_lat: T) -> T
+where
+    T: Float + FloatConst + PartialOrd,
+{
+    let three60 = NumCast::from(360.0).unwrap();
     if lng >= node.min_lng && lng <= node.max_lng {
         let lat = match lat {
-            lat if lat <= node.min_lat => EARTH_CIRCUMFERENCE * (node.min_lat - lat) / 360.0,
-            lat if lat >= node.max_lat => EARTH_CIRCUMFERENCE * (lat - node.max_lat) / 360.0,
-            _ => 0.0,
+            lat if lat <= node.min_lat => {
+                earth_circumference::<T>() * (node.min_lat - lat) / three60
+            }
+            lat if lat >= node.max_lat => {
+                earth_circumference::<T>() * (lat - node.max_lat) / three60
+            }
+            _ => NumCast::from(0.0).unwrap(),
         };
         return lat;
     }
 
     let closest_lng =
-        if (node.min_lng - lng + 360.0) % 360.0 <= (lng - node.max_lng + 360.0) % 360.0 {
+        if (node.min_lng - lng + three60) % three60 <= (lng - node.max_lng + three60) % three60 {
             node.min_lng
         } else {
             node.max_lng
         };
-    let cos_lng_delta = f64::cos((closest_lng - lng) * RAD);
-    let extremum_lat = f64::atan(sin_lat / (cos_lat * cos_lng_delta)) / RAD;
+    let cos_lng_delta = T::cos((closest_lng - lng) * rad::<T>());
+    let extremum_lat = T::atan(sin_lat / (cos_lat * cos_lng_delta)) / rad::<T>();
 
-    let mut d = f64::max(
+    let mut d = T::max(
         great_circle_dist_part(node.min_lat, cos_lat, sin_lat, cos_lng_delta),
         great_circle_dist_part(node.max_lat, cos_lat, sin_lat, cos_lng_delta),
     );
 
     if extremum_lat > node.min_lat && extremum_lat < node.max_lat {
-        d = f64::max(
+        d = T::max(
             d,
             great_circle_dist_part(extremum_lat, cos_lat, sin_lat, cos_lng_delta),
         )
     }
 
-    EARTH_RADIUS * f64::acos(d)
+    earth_radius::<T>() * T::acos(d)
 }
 
-fn great_circle_dist(lng: f64, lat: f64, lng2: f64, lat2: f64, cos_lat: f64, sin_lat: f64) -> f64 {
-    let cos_lng_delta = f64::cos((lng2 - lng) * RAD);
-    EARTH_RADIUS
-        * f64::acos(great_circle_dist_part(
-            lat2,
-            cos_lat,
-            sin_lat,
-            cos_lng_delta,
-        ))
+fn great_circle_dist<T>(lng: T, lat: T, lng2: T, lat2: T, cos_lat: T, sin_lat: T) -> T
+where
+    T: Float + PartialOrd + FloatConst + std::ops::Mul<Output = T>,
+{
+    let cos_lng_delta = T::cos((lng2 - lng) * rad::<T>());
+    earth_radius::<T>() * T::acos(great_circle_dist_part(
+        lat2,
+        cos_lat,
+        sin_lat,
+        cos_lng_delta,
+    ))
 }
 
-fn great_circle_dist_part(lat: f64, cos_lat: f64, sin_lat: f64, cos_lng_delta: f64) -> f64 {
-    let d = sin_lat * f64::sin(lat * RAD) + cos_lat * f64::cos(lat * RAD) * cos_lng_delta;
-    f64::min(d, 1.0)
+fn great_circle_dist_part<T>(lat: T, cos_lat: T, sin_lat: T, cos_lng_delta: T) -> T
+where
+    T: Float + PartialOrd + FloatConst,
+{
+    let d = sin_lat * T::sin(lat * rad::<T>()) + cos_lat * T::cos(lat * rad::<T>()) * cos_lng_delta;
+    T::min(d, num::one::<T>())
 }
 
-pub fn distance(lng: f64, lat: f64, lng2: f64, lat2: f64) -> f64 {
+pub fn distance<T>(lng: T, lat: T, lng2: T, lat2: T) -> T
+where
+    T: Float + PartialOrd + FloatConst,
+{
     great_circle_dist(
         lng,
         lat,
         lng2,
         lat2,
-        f64::cos(lat * RAD),
-        f64::sin(lat * RAD),
+        T::cos(lat * rad::<T>()),
+        T::sin(lat * rad::<T>()),
     )
 }

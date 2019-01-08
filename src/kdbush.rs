@@ -1,3 +1,5 @@
+extern crate num;
+extern crate num_traits;
 extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
@@ -5,31 +7,69 @@ extern crate serde_json;
 use conv::prelude::*;
 use std::fmt;
 
+use num::Num;
 use serde_derive::Deserialize;
 
-pub struct KDBush<T> {
+pub struct KDBush<T>
+where
+    T: Coords,
+    T::CoordType: Num + PartialOrd,
+{
     pub points: Vec<T>,
-    pub index: Box<FnMut(&T) -> Point>,
-    pub coords: Vec<Point>,
+    pub index: Box<FnMut(&T) -> Point<T::CoordType>>,
+    // pub coords: Vec<Point<T::CoordType>>,
     pub node_size: usize,
     pub ids: Vec<usize>,
 }
 
 type TIndex = usize;
 
-type TNumber = GNumber<f64>;
-type RawCoord = (TNumber, TNumber);
+pub struct RawCoord(pub i16, pub i16);
 
-type GNumber<T> = T;
+impl Coords for RawCoord {
+    type CoordType = i16;
+    fn get_x(&self) -> <RawCoord as Coords>::CoordType {
+        self.0
+    }
 
-pub struct Point(pub TNumber, pub TNumber);
+    fn get_y(&self) -> <RawCoord as Coords>::CoordType {
+        self.1
+    }
 
-impl Point {
-    pub fn get(&self, i: i8) -> TNumber {
+    fn get(&self, i: i8) -> <RawCoord as Coords>::CoordType {
         match i {
             0 => self.0,
             _ => self.1,
         }
+    }
+}
+
+impl fmt::Debug for RawCoord {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "({},{})", self.0, self.1)
+    }
+}
+
+pub struct Point<T>(pub T, pub T);
+
+impl<T> Point<T>
+where
+    T: Num + PartialOrd,
+{
+    pub fn get(&self, i: i8) -> &T {
+        match i {
+            0 => &self.0,
+            _ => &self.1,
+        }
+    }
+}
+
+impl<T> fmt::Debug for Point<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "({},{})", self.0, self.1)
     }
 }
 
@@ -48,89 +88,59 @@ pub struct City {
     pub lon: f64,
 }
 
-impl fmt::Debug for Point {
+impl<T> fmt::Debug for KDBush<T>
+where
+    T: Coords + fmt::Debug,
+    T::CoordType: Num + PartialOrd + fmt::Debug,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "({},{})", self.0, self.1)
+        let p: Vec<(T::CoordType, T::CoordType)> = self.points.iter().map(|p| (p.get_x(),p.get_y())).collect();
+        p.fmt(formatter)
     }
-}
-
-impl<T> fmt::Debug for KDBush<T> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        self.coords[..].fmt(formatter)
-    }
-}
-
-pub trait CoordsGetter<T> {
-    fn get_coords(&self) -> Box<FnMut(&T) -> Point>;
-
-    // fn get_coords(&self, p: &T) -> Point;
-
-    // impl<'a> CoordsGetter<Point> for KDBush<'a, (TNumber, TNumber)> {
-    //     fn get_coords(p: &Point) -> Point {
-    //         Point(p.0, p.1)
-    //     }
 }
 
 pub trait Coords {
-    fn get_x(&self) -> &TNumber;
-    fn get_y(&self) -> &TNumber;
-}
-
-impl<T> CoordsGetter<RawCoord> for KDBush<T> {
-    fn get_coords(&self) -> Box<FnMut(&RawCoord) -> Point> {
-        Box::new(|p: &RawCoord| Point(p.0, p.1))
-    }
-    // fn get_coords(&self, p: &RawCoord) -> Point {
-    //     Point(p.0, p.1)
-    // }
-}
-
-impl<T> CoordsGetter<City> for KDBush<T>
-// where
-//     &'static KDBush<City>: CoordsGetter<T>,
-{
-    fn get_coords(&self) -> Box<FnMut(&City) -> Point> {
-        Box::new(|c: &City| Point(c.lon, c.lat))
-    }
-    // fn get_coords(&self, c: &City) -> Point {
-    //     Point(c.lon, c.lat)
-    // }
+    type CoordType: Num + PartialOrd;
+    fn get_x(&self) -> Self::CoordType;
+    fn get_y(&self) -> Self::CoordType;
+    fn get(&self, i: i8) -> Self::CoordType;
 }
 
 impl Coords for City {
-    fn get_x(&self) -> &TNumber {
-        &self.lon
+    type CoordType = f64;
+    fn get_x(&self) -> <City as Coords>::CoordType {
+        self.lon
     }
-    fn get_y(&self) -> &TNumber {
-        &self.lat
+    fn get_y(&self) -> <City as Coords>::CoordType {
+        self.lat
     }
-}
-
-impl Coords for RawCoord {
-    fn get_x(&self) -> &TNumber {
-        &self.0
-    }
-
-    fn get_y(&self) -> &TNumber {
-        &self.1 
+    fn get(&self, i: i8) -> <City as Coords>::CoordType {
+        match i {
+            0 => self.lon,
+            _ => self.lat,
+        }
     }
 }
 
 impl<T> KDBush<T>
-// where
-//     KDBush<T>: CoordsGetter<T>,
+where
+    T: Coords,
+    T::CoordType: Num + PartialOrd,
 {
     pub fn new(
         points: Vec<T>,
-        mut index: Box<FnMut(&T) -> Point>,
+        mut index: Box<FnMut(&T) -> Point<T::CoordType>>,
         node_size: usize,
     ) -> Result<KDBush<T>, std::io::Error> {
         let ids: Vec<usize> = points.iter().enumerate().map(|(i, _)| i).collect();
-        let coords = points.iter().map(|p| -> Point { index(p) }).collect();
+        // let coords = points
+        //     .iter()
+        //     .map(|p| -> Point<T::CoordType> { index(p) })
+        //     .collect();
         let mut new_kdb = KDBush {
             points: points,
             index: index,
-            coords: coords,
+            // coords: coords,
             node_size: node_size,
             ids: ids,
         };
@@ -159,16 +169,19 @@ impl<T> KDBush<T>
 
     pub fn range(
         &self,
-        min_x: TNumber,
-        min_y: TNumber,
-        max_x: TNumber,
-        max_y: TNumber,
+        min_x: &T::CoordType,
+        min_y: &T::CoordType,
+        max_x: &T::CoordType,
+        max_y: &T::CoordType,
         mut result: &mut Vec<TIndex>,
         left: Option<TIndex>,
         right: Option<TIndex>,
         axis: Option<i8>,
-    ) {
-        if self.coords.is_empty() {
+    ) where
+        T: Coords,
+        T::CoordType: Num + PartialOrd,
+    {
+        if self.points.is_empty() {
             return;
         }
 
@@ -178,10 +191,10 @@ impl<T> KDBush<T>
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let p = &self.coords[i];
+                let p = &self.points[self.ids[i]];
                 // let (x,y) = p.get_coords();
-                let x = p.get(0);
-                let y = p.get(1);
+                let x = &p.get_x();
+                let y = &p.get_y();
                 if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
                     r.push(self.ids[i]);
                 }
@@ -191,8 +204,8 @@ impl<T> KDBush<T>
         }
 
         let m: TIndex = (left + right) >> 1;
-        let x = self.coords[m].get(0);
-        let y = self.coords[m].get(1);
+        let x = &self.points[self.ids[m]].get_x();
+        let y = &self.points[self.ids[m]].get_y();
 
         if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
             result.push(self.ids[m]);
@@ -227,15 +240,17 @@ impl<T> KDBush<T>
 
     pub fn within(
         &self,
-        qx: TNumber,
-        qy: TNumber,
-        r: TNumber,
+        qx: T::CoordType,
+        qy: T::CoordType,
+        r: T::CoordType,
         mut result: &mut Vec<TIndex>,
         left: Option<TIndex>,
         right: Option<TIndex>,
         axis: Option<u8>,
-    ) {
-        if self.coords.is_empty() {
+    ) where
+        T::CoordType: Num + std::ops::Mul + Copy,
+    {
+        if self.points.is_empty() {
             return;
         }
 
@@ -247,8 +262,9 @@ impl<T> KDBush<T>
 
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
-                let p = &self.coords[i];
-                if KDBush::<T>::sq_dist(p.get(0), p.get(1), qx, qy) <= r2 {
+                let p = &self.points[self.ids[i]];
+                if Self::sq_dist(p.get_x().clone(), p.get_y().clone(), qx.clone(), qy.clone()) <= r2
+                {
                     r.push(self.ids[i]);
                 }
                 r
@@ -257,11 +273,11 @@ impl<T> KDBush<T>
         }
 
         let m = (left + right) >> 1;
-        let p = &self.coords[m];
-        let x = p.get(0);
-        let y = p.get(1);
+        let p = &self.points[self.ids[m]];
+        let x = p.get_x();
+        let y = p.get_y();
 
-        if KDBush::<T>::sq_dist(x, y, qx, qy) <= r2 {
+        if KDBush::<T>::sq_dist(x.clone(), y.clone(), qx.clone(), qy.clone()) <= r2 {
             result.push(self.ids[m]);
         }
 
@@ -322,12 +338,12 @@ impl<T> KDBush<T>
                 );
             };
 
-            let t = self.coords[k].get(coord_i);
+            let t = self.points[self.ids[k]].get(coord_i);
             let mut i = left;
             let mut j = right;
 
             self.swap_item(left, k);
-            if self.coords[right].get(coord_i) > t {
+            if self.points[self.ids[right]].get(coord_i) > t {
                 self.swap_item(left, right);
             }
 
@@ -336,15 +352,15 @@ impl<T> KDBush<T>
                 i += 1;
                 j -= 1;
 
-                while self.coords[i].get(coord_i) < t {
+                while self.points[self.ids[i]].get(coord_i) < t {
                     i += 1;
                 }
-                while self.coords[j].get(coord_i) > t {
+                while self.points[self.ids[j]].get(coord_i) > t {
                     j -= 1;
                 }
             }
 
-            if self.coords[left].get(coord_i) == t {
+            if self.points[self.ids[left]].get(coord_i) == t {
                 self.swap_item(left, j);
             } else {
                 j += 1;
@@ -362,12 +378,21 @@ impl<T> KDBush<T>
 
     fn swap_item(&mut self, i: usize, j: usize) {
         self.ids.swap(i, j);
-        self.coords.swap(i, j);
+        // self.coords.swap(i, j);
     }
 
-    fn sq_dist(ax: TNumber, ay: TNumber, bx: TNumber, by: TNumber) -> TNumber {
+    fn sq_dist(
+        ax: T::CoordType,
+        ay: T::CoordType,
+        bx: T::CoordType,
+        by: T::CoordType,
+    ) -> T::CoordType
+    where
+        T::CoordType: Num + Clone,
+        // &'a T::CoordType: Num + std::ops::Mul + std::ops::Add
+    {
         let dx = ax - bx;
         let dy = ay - by;
-        dx * dx + dy * dy
+        dx.clone() * dx + dy.clone() * dy
     }
 }
