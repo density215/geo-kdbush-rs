@@ -16,17 +16,20 @@ where
     T::CoordType: Num + PartialOrd,
 {
     pub points: Vec<T>,
-    // pub index: Box<FnMut(&T) -> Point<T::CoordType>>,
-    // pub coords: Vec<Point<T::CoordType>>,
     pub node_size: usize,
     pub ids: Vec<usize>,
 }
 
 type TIndex = usize;
 
-pub struct RawCoord<T>(pub T, pub T) where T: Num + PartialOrd;
+pub struct RawCoord<T>(pub T, pub T)
+where
+    T: Num + PartialOrd;
 
-impl<T> Coords for RawCoord<T> where T: Num + PartialOrd + Copy {
+impl<T> Coords for RawCoord<T>
+where
+    T: Num + PartialOrd + Copy,
+{
     type CoordType = T;
     fn get_x(&self) -> <RawCoord<T> as Coords>::CoordType {
         self.0
@@ -44,7 +47,10 @@ impl<T> Coords for RawCoord<T> where T: Num + PartialOrd + Copy {
     }
 }
 
-impl<T> fmt::Debug for RawCoord<T> where T: Num + PartialOrd + fmt::Display {
+impl<T> fmt::Debug for RawCoord<T>
+where
+    T: Num + PartialOrd + fmt::Display,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "({},{})", self.0, self.1)
     }
@@ -74,15 +80,16 @@ where
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct City {
     pub name: String,
     country: String,
-    altCountry: String,
+    alt_country: String,
     muni: String,
-    muniSub: String,
-    featureClass: String,
-    featureCode: String,
-    adminCode: String,
+    muni_sub: String,
+    feature_class: String,
+    feature_code: String,
+    admin_code: String,
     pub population: u32,
     pub lat: f64,
     pub lon: f64,
@@ -94,7 +101,8 @@ where
     T::CoordType: Num + PartialOrd + fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let p: Vec<(T::CoordType, T::CoordType)> = self.points.iter().map(|p| (p.get_x(),p.get_y())).collect();
+        let p: Vec<(T::CoordType, T::CoordType)> =
+            self.points.iter().map(|p| (p.get_x(), p.get_y())).collect();
         p.fmt(formatter)
     }
 }
@@ -127,25 +135,14 @@ where
     T: Coords,
     T::CoordType: Num + PartialOrd,
 {
-    pub fn new(
-        points: Vec<T>,
-        // index: Box<FnMut(&T) -> Point<T::CoordType>>,
-        node_size: usize,
-    ) -> Result<KDBush<T>, std::io::Error> {
+    pub fn new(points: Vec<T>, node_size: usize) -> Result<KDBush<T>, std::io::Error> {
         let ids: Vec<usize> = points.iter().enumerate().map(|(i, _)| i).collect();
-        // let coords = points
-        //     .iter()
-        //     .map(|p| -> Point<T::CoordType> { index(p) })
-        //     .collect();
         let mut new_kdb = KDBush {
             points: points,
-            // index: index,
-            // coords: coords,
             node_size: node_size,
             ids: ids,
         };
         let l = new_kdb.ids.len();
-        // new_kdb.fill_cords();
 
         match l {
             l if l >= 1 => {
@@ -155,17 +152,6 @@ where
             _ => Ok(new_kdb),
         }
     }
-
-    // fn fill_cords(&mut self) {
-    //     // let mut coords_get: Box<FnMut(&T) -> Point> = Self::get_coords(&self);
-    //     let mut coords_get = &self.index;
-
-    //     self.coords = self
-    //         .points
-    //         .iter()
-    //         .map(|p| -> Point { coords_get(p) })
-    //         .collect();
-    // }
 
     pub fn range(
         &self,
@@ -192,7 +178,6 @@ where
         if right - left <= self.node_size {
             (left..right + 1).fold(&mut result, |r, i| {
                 let p = &self.points[self.ids[i]];
-                // let (x,y) = p.get_coords();
                 let x = &p.get_x();
                 let y = &p.get_y();
                 if x >= min_x && x <= max_x && y >= min_y && y <= max_y {
@@ -378,7 +363,6 @@ where
 
     fn swap_item(&mut self, i: usize, j: usize) {
         self.ids.swap(i, j);
-        // self.coords.swap(i, j);
     }
 
     fn sq_dist(
@@ -389,7 +373,6 @@ where
     ) -> T::CoordType
     where
         T::CoordType: Num + Clone,
-        // &'a T::CoordType: Num + std::ops::Mul + std::ops::Add
     {
         let dx = ax - bx;
         let dy = ay - by;

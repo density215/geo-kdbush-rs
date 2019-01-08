@@ -12,10 +12,6 @@ use crate::kdbush::{Coords, KDBush};
 use num::{Float, NumCast};
 use num_traits::FloatConst;
 
-pub const EARTH_RADIUS: f64 = 6137.0;
-pub const EARTH_CIRCUMFERENCE: f64 = 40007.0;
-pub const RAD: f64 = std::f64::consts::PI / 180.0;
-
 fn earth_radius<T: Float + FloatConst>() -> T
 where
     T: std::ops::Div<Output = T>,
@@ -76,13 +72,11 @@ where
 
 struct PointDist<S, T>(S, T)
 where
-    // S: Coords,
     T: Float + FloatConst + PartialOrd;
 
 impl<S, T> PartialEq for PointDist<S, T>
 where
     T: Float + FloatConst + PartialOrd,
-    // S: Coords,
 {
     fn eq(&self, other: &PointDist<S, T>) -> bool {
         self.1 == other.1
@@ -110,29 +104,11 @@ where
 impl<S, T> PartialOrd for PointDist<S, T>
 where
     T: Float + FloatConst + PartialOrd,
-    // S: Coords,
 {
     fn partial_cmp(&self, other: &PointDist<S, T>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
-
-// impl Node {
-//     pub fn new(len: usize) -> Node {
-//         // an object that represents the top kd-tree node (the whole Earth)
-//         let node = Node {
-//             left: 0,        // left index in the kd-tree array
-//             right: len - 1, // right index
-//             axis: 0,        // 0 for longitude axis and 1 for latitude axis
-//             // dist: 0.0,       // will hold the lower bound of children's distances to the query point
-//             min_lng: -180.0, // bounding box of the node
-//             min_lat: -90.0,
-//             max_lng: 180.0,
-//             max_lat: 90.0,
-//         };
-//         node
-//     }
-// }
 
 pub fn around<'a, T>(
     index: &'a KDBush<T>,
@@ -153,10 +129,9 @@ where
 
     // an object that represents the top kd-tree node (the whole Earth)
     let mut point_or_node = PointOrNode::Node(Node::<T::CoordType> {
-        left: 0,                    // left index in the kd-tree array
-        right: index.ids.len() - 1, // right index
-        axis: 0,                    // 0 for longitude axis and 1 for latitude axis
-        // dist: 0.0, // will hold the lower bound of children's distances to the query point
+        left: 0,                                 // left index in the kd-tree array
+        right: index.ids.len() - 1,              // right index
+        axis: 0,                                 // 0 for longitude axis and 1 for latitude axis
         min_lng: NumCast::from(-180.0).unwrap(), // bounding box of the node
         min_lat: NumCast::from(-90.0).unwrap(),
         max_lng: NumCast::from(180.0).unwrap(),
@@ -204,9 +179,7 @@ where
             // not a leaf node (has children). branch.
             println!("branch node");
             let m = (left + right) >> 1;
-            // let mid_lng = index.coords[m].get(0);
             let mid_lng = index.points[index.ids[m]].get_x();
-            // let mid_lat = index.coords[m].get(1);
             let mid_lat = index.points[index.ids[m]].get_y();
 
             let item = &index.points[index.ids[m]];
@@ -286,14 +259,11 @@ where
                     result.push(point);
                 } else {
                     println!("wut?");
-                    // if let PointOrNode::Node(node) = candidate.0 {
-                    //     println!("{:?}", node);
-                    // }
                 }
 
                 if max_results.is_some() && result.len() == max_results.unwrap() {
                     println!("stop results.");
-                    return result;
+                    return result; // this breaks the 'tree loop
                 }
             } else {
                 // no point found, this is a branch node
@@ -310,8 +280,6 @@ where
             }
         };
     }
-
-    result
 }
 
 fn box_dist<T>(lng: T, lat: T, node: Box<&Node<T>>, cos_lat: T, sin_lat: T) -> T
@@ -356,7 +324,7 @@ where
     earth_radius::<T>() * T::acos(d)
 }
 
-fn great_circle_dist<T>(lng: T, lat: T, lng2: T, lat2: T, cos_lat: T, sin_lat: T) -> T
+fn great_circle_dist<T>(lng: T, _: T, lng2: T, lat2: T, cos_lat: T, sin_lat: T) -> T
 where
     T: Float + PartialOrd + FloatConst + std::ops::Mul<Output = T>,
 {

@@ -6,7 +6,7 @@ extern crate flate2;
 #[cfg(test)]
 mod tests {
     use crate::geokdbush::around;
-    use crate::kdbush::{City, KDBush, Point};
+    use crate::kdbush::{City, KDBush};
 
     use std::error::Error;
     use std::fs::File;
@@ -23,8 +23,7 @@ mod tests {
         let cities: Vec<City> = serde_json::from_str(s.as_str())?;
         println!("{:?}", cities[0]);
         let cities: KDBush<City> = KDBush::new(
-            cities,
-            // Box::new(|c: &City| Point(c.lon as f64, c.lat as f64)),
+            cities, // Box::new(|c: &City| Point(c.lon as f64, c.lat as f64)),
             64,
         ).unwrap();
         Ok(cities)

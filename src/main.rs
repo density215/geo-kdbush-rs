@@ -1,12 +1,6 @@
-// extern crate kdbush;
-
-// use geokdbush;
-// use kdbush::{KDBush, Point};
-use kdbush::geokdbush::{around, distance};
-use kdbush::kdbush::{KDBush, Point, RawCoord};
+use kdbush::kdbush::{KDBush, RawCoord};
 
 fn main() {
-    // let ba = geokdbush::EARTH_RADIUS;
     let points = vec![
         (54, 1),
         (97, 21),
@@ -112,7 +106,6 @@ fn main() {
 
     let kdb = KDBush::new(
         points.iter().map(|p| RawCoord(p.0, p.1)).collect(),
-        // Box::new(|p: &RawCoord<i16>| Point(p.0, p.1)),
         10,
     );
 
@@ -122,8 +115,6 @@ fn main() {
 
     println!("{:?}", sorted_kdb);
 
-    // &sorted_kdb.range(20, 30, 50, 70, &mut range_idx, None, None, None);
-
     &sorted_kdb.within(50, 50, 20, &mut range_idx, None, None, None);
 
     println!("{:?}", range_idx);
@@ -131,7 +122,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use kdbush::kdbush::{KDBush, Point, RawCoord};
+    use kdbush::kdbush::{RawCoord};
 
     fn get_points() -> Vec<RawCoord<i16>> {
         vec![
